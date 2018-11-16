@@ -1,3 +1,15 @@
+/*
+*
+* Ryan Robinson
+*
+* ElliottWavesToken (EWT)
+*
+* Illustration of Elliott Wave Theory and Vilfredo Pareto principles (80/20)
+
+* https://github.com/ry-rob/ElliottWavesToken
+*
+*/
+
 pragma solidity 0.4.25;
 
 
