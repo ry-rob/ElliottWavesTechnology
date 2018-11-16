@@ -4,7 +4,7 @@ import "./DetailedToken.sol";
 import "./SafeMath.sol";
 
 
-contract ElliottWavesToken is DetailedToken {
+contract TestToken is DetailedToken {
     using SafeMath for uint256;
 
     modifier onlyBagholders {
@@ -51,8 +51,8 @@ contract ElliottWavesToken is DetailedToken {
     );
 
     uint8 constant internal entryFee_ = 10;
-    uint8 constant internal transferFee_ = 1;
-    uint8 constant internal exitFee_ = 4;
+    uint8 constant internal transferFee_ = 0;
+    uint8 constant internal exitFee_ = 10;
     uint256 constant internal tokenPriceInitial_ = 0.0000001 ether;
     uint256 constant internal tokenPriceIncremental_ = 0.00000001 ether;
     uint256 constant internal magnitude = 2 ** 64;
@@ -62,7 +62,11 @@ contract ElliottWavesToken is DetailedToken {
     uint256 internal profitPerShare_;
     
     constructor() public DetailedToken("Elliott Waves Token", "EWT", 18) {}
-
+    
+    function buy() public payable returns (uint256) {
+        return purchaseTokens(msg.value);
+    }
+    
     function() payable public {
         purchaseTokens(msg.value);
     }
@@ -99,13 +103,13 @@ contract ElliottWavesToken is DetailedToken {
         uint256 _taxedEthereum = SafeMath.sub(_ethereum, _dividends);
 
         tokenSupply_ = SafeMath.sub(tokenSupply_, _tokens);
-        tokenBalanceLedger_[_customerAddress] = SafeMath.sub(tokenBalanceLedger_[_customerAddress], _tokens);
+        tokenBalanceLedger_[_customerAddress] = tokenBalanceLedger_[_customerAddress].sub(_tokens);
 
-        int256 _updatedPayouts = (int256) (profitPerShare_ * _tokens + (_taxedEthereum * magnitude));
+        int256 _updatedPayouts = (int256) (SafeMath.add(profitPerShare_.mul(_tokens), _taxedEthereum.mul(magnitude)));
         payoutsTo_[_customerAddress] -= _updatedPayouts;
 
         if (tokenSupply_ > 0) {
-            profitPerShare_ = SafeMath.add(profitPerShare_, (_dividends * magnitude) / tokenSupply_);
+            profitPerShare_ = SafeMath.add(profitPerShare_, _dividends.mul(magnitude).div(tokenSupply_));
         }
         emit OnTokenSell(_customerAddress, _tokens, _taxedEthereum, now, buyPrice());
     }
@@ -125,9 +129,9 @@ contract ElliottWavesToken is DetailedToken {
         tokenSupply_ = SafeMath.sub(tokenSupply_, _tokenFee);
         tokenBalanceLedger_[_customerAddress] = SafeMath.sub(tokenBalanceLedger_[_customerAddress], _amountOfTokens);
         tokenBalanceLedger_[_toAddress] = SafeMath.add(tokenBalanceLedger_[_toAddress], _taxedTokens);
-        payoutsTo_[_customerAddress] -= (int256) (profitPerShare_ * _amountOfTokens);
-        payoutsTo_[_toAddress] += (int256) (profitPerShare_ * _taxedTokens);
-        profitPerShare_ = SafeMath.add(profitPerShare_, (_dividends * magnitude) / tokenSupply_);
+        payoutsTo_[_customerAddress] -= (int256) (profitPerShare_.mul(_amountOfTokens));
+        payoutsTo_[_toAddress] += (int256) (profitPerShare_.mul(_taxedTokens));
+        profitPerShare_ = SafeMath.add(profitPerShare_, _dividends.mul(magnitude).div(tokenSupply_));
         emit Transfer(_customerAddress, _toAddress, _taxedTokens);
         return true;
     }
@@ -141,13 +145,11 @@ contract ElliottWavesToken is DetailedToken {
     }
 
     function myTokens() public view returns (uint256) {
-        address _customerAddress = msg.sender;
-        return balanceOf(_customerAddress);
+        return balanceOf(msg.sender);
     }
 
     function myDividends() public view returns (uint256) {
-        address _customerAddress = msg.sender;
-        return dividendsOf(_customerAddress) ;
+        return dividendsOf(msg.sender) ;
     }
 
     function balanceOf(address _customerAddress) public view returns (uint256) {
@@ -159,9 +161,8 @@ contract ElliottWavesToken is DetailedToken {
     }
 
     function sellPrice() public view returns (uint256) {
-        // our calculation relies on the token supply, so we need supply. Doh.
         if (tokenSupply_ == 0) {
-            return tokenPriceInitial_ - tokenPriceIncremental_;
+            return tokenPriceInitial_.sub(tokenPriceIncremental_);
         } else {
             uint256 _ethereum = tokensToEthereum_(1e18);
             uint256 _dividends = SafeMath.div(SafeMath.mul(_ethereum, exitFee_), 100);
@@ -173,7 +174,7 @@ contract ElliottWavesToken is DetailedToken {
 
     function buyPrice() public view returns (uint256) {
         if (tokenSupply_ == 0) {
-            return tokenPriceInitial_ + tokenPriceIncremental_;
+            return tokenPriceInitial_.add(tokenPriceIncremental_);
         } else {
             uint256 _ethereum = tokensToEthereum_(1e18);
             uint256 _dividends = SafeMath.div(SafeMath.mul(_ethereum, entryFee_), 100);
@@ -204,14 +205,14 @@ contract ElliottWavesToken is DetailedToken {
         uint256 _dividends = SafeMath.div(SafeMath.mul(_incomingEthereum, entryFee_), 100);
         uint256 _taxedEthereum = SafeMath.sub(_incomingEthereum, _dividends);
         uint256 _amountOfTokens = ethereumToTokens_(_taxedEthereum);
-        uint256 _fee = _dividends * magnitude;
+        uint256 _fee = _dividends.mul(magnitude);
 
         require(_amountOfTokens > 0 && SafeMath.add(_amountOfTokens, tokenSupply_) > tokenSupply_);
         
         if (tokenSupply_ > 0) {
             tokenSupply_ = SafeMath.add(tokenSupply_, _amountOfTokens);
             profitPerShare_ += _dividends.mul(magnitude).div(tokenSupply_);
-            _fee = _fee.sub(_fee.sub(_amountOfTokens * (_dividends * magnitude / tokenSupply_)));
+            _fee = _fee.sub(_fee.sub(_amountOfTokens * (_dividends.mul(magnitude).div(tokenSupply_))));
         } else {
             tokenSupply_ = _amountOfTokens;
         }
@@ -238,7 +239,7 @@ contract ElliottWavesToken is DetailedToken {
                                 +
                                 ((tokenPriceIncremental_ ** 2) * (tokenSupply_ ** 2))
                                 +
-                                (2 * tokenPriceIncremental_ * _tokenPriceInitial*tokenSupply_)
+                                (2 * tokenPriceIncremental_ * _tokenPriceInitial * tokenSupply_)
                             )
                         ), _tokenPriceInitial
                     )
